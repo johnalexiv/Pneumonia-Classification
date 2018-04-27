@@ -5,34 +5,80 @@ from scipy.misc import imresize
 import pylab as pl
 from PIL import Image
 
-data_dir = os.getcwd() + '/chest_xray'
+class DataSet():
+    def __init__(self):
+        self.data_dir = os.getcwd() + '/chest_xray'
+        self.train_dir = self.data_dir + '/train'
+        self.val_dir = self.data_dir + '/val'
+        self.test_dir = self.data_dir + '/test'
 
-train_normal_files = os.listdir(data_dir + '/train/NORMAL')
-train_pneumonia_files = os.listdir(data_dir + '/train/PNEUMONIA')
+        self.train_normal_files = os.listdir(self.train_dir + '/NORMAL')
+        self.train_pneumonia_files = os.listdir(self.train_dir + '/PNEUMONIA')
 
-test_normal_files = os.listdir(data_dir + '/test/NORMAL')
-test_pneumonia_files = os.listdir(data_dir + '/test/PNEUMONIA')
+        self.test_normal_files = os.listdir(self.test_dir + '/NORMAL')
+        self.test_pneumonia_files = os.listdir(self.test_dir + '/PNEUMONIA')
 
-val_normal_files = os.listdir(data_dir + '/val/NORMAL')
-val_pneumonia_files = os.listdir(data_dir + '/val/PNEUMONIA')
+        self.val_normal_files = os.listdir(self.val_dir + '/NORMAL')
+        self.val_pneumonia_files = os.listdir(self.val_dir + '/PNEUMONIA')
 
-path = r'\path\to\image\file.jpg'
+        self.prepare_data()
 
-img = Image.open(os.path.join(data_dir, 'train/NORMAL', train_normal_files[20]))
+    def prepare_data(self):
+        self.train_images = []
+        self.val_images = []
+        self.test_images = []
 
-diff = abs(img.size[0] - img.size[1])
-padding = int(diff / 2)
-if img.size[0] > img.size[1]:
-    new_img = np.pad(img, [(padding, padding + 1), (0, 0)], mode='constant')
-else:
-    new_img = np.pad(img, [(0, 0), (padding, padding + 1)], mode='constant')
+        # Load training data
+        for file in self.train_normal_files:
+            self.train_images.append((os.path.join(self.train_dir + '/NORMAL', file), 0))
+        for file in self.train_pneumonia_files:
+            self.train_images.append((os.path.join(self.train_dir + '/PNEUMONIA', file), 1))
 
-new_img = imresize(new_img, (200,200), interp='bilinear')
+        # Load validation data
+        for file in self.val_normal_files:
+            self.val_images.append((os.path.join(self.val_dir + '/NORMAL', file), 0))
+        for file in self.val_pneumonia_files:
+            self.val_images.append((os.path.join(self.val_dir + '/PNEUMONIA', file), 1))
 
-a = np.asarray(new_img)
+        # Load test data
+        for file in self.test_normal_files:
+            self.test_images.append((os.path.join(self.test_dir + '/NORMAL', file), 0))
+        for file in self.test_pneumonia_files:
+            self.test_images.append((os.path.join(self.test_dir + '/PNEUMONIA', file), 1))
 
-pl.imshow(a)
-pl.show()
+    def crop_resize_image(self, file_path):
+        img = Image.open(file_path)
+
+        diff = abs(img.size[0] - img.size[1])
+        padding = int(diff / 2)
+        if img.size[0] > img.size[1]:
+            new_img = np.pad(img, [(padding, padding + 1), (0, 0)], mode='constant')
+        else:
+            new_img = np.pad(img, [(0, 0), (padding, padding + 1)], mode='constant')
+
+        new_img = imresize(new_img, (200, 200), interp='bilinear')
+
+        return np.asarray(new_img)
+
+    def next_image(self, type):
+        pass
+
+    def next_batch(self, batch_size, type):
+        batch = []
+        for _ in range(batch_size):
+            pass
+
+
+dataset = DataSet()
+
+import random
+
+a = dataset.test_images
+random.shuffle(a)
+
+images = [x[0] for x in a]
+labels = [x[1] for x in a]
+
 
 
 LOGDIR = os.path.dirname(__file__)
@@ -47,8 +93,6 @@ if not os.path.exists(SAVEDIR):
 if not os.path.exists(SUMDIR):
     os.mkdir(SUMDIR)
 
-def load_image():
-    pass
 
 def weight_variable(shape):
     weight = tf.truncated_normal(shape, stddev=0.1)
@@ -59,7 +103,6 @@ def bias_variable(shape):
     return tf.Variable(bias)
 
 
-
 def save_model(save_step, sess, saver):
     save_path = (SAVEDIR)
     if not os.path.exists(save_path):
@@ -67,8 +110,8 @@ def save_model(save_step, sess, saver):
     saver.save(sess, (save_path + '/model.ckpt'), global_step=save_step)
     print('Model saved to %s' % save_path)
 
-def neural_network(input, num_input, num_layers, num_neurons, num_classes, activation_function):
-    input_channel = num_input
+def neural_network(input, input_size, num_layers, num_neurons, num_classes, activation_function):
+    input_channel = input_size
     output_channel = num_neurons
     prev_layer = input
 
@@ -127,7 +170,7 @@ def mnist_model(learning_rate,
                 display_step,
                 num_neurons,
                 num_layers,
-                num_input,
+                input_size,
                 num_classes,
                 hparam,
                 save_step,
@@ -138,11 +181,11 @@ def mnist_model(learning_rate,
     sess = tf.Session()
 
     # Setup placeholders, and reshape the data
-    x = tf.placeholder(tf.float32, shape=[None, num_input])
+    x = tf.placeholder(tf.float32, shape=[None, input_size])
     y_ = tf.placeholder(tf.float32, shape=[None, num_classes])
 
     # Output of network
-    y = neural_network(x, num_input, num_layers, num_neurons, num_classes, activation_function)
+    y = neural_network(x, input_size, num_layers, num_neurons, num_classes, activation_function)
 
     # Cost function
     with tf.name_scope('cross_entropy'):
@@ -199,7 +242,7 @@ def main():
     save_step = 2500
 
     # Network Parameters
-    num_input = 40000  # data input (img shape: 200*200)
+    input_size = 40000  # data input (img shape: 200*200)
     num_classes = 2  # classes (NORMAL, PNEUMONIA)
 
     # Parameter search
@@ -218,7 +261,7 @@ def main():
                 display_step,
                 neurons,
                 layers,
-                num_input,
+                input_size,
                 num_classes,
                 hparam,
                 save_step,
