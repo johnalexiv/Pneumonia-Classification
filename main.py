@@ -76,10 +76,34 @@ import random
 a = dataset.test_images
 random.shuffle(a)
 
-images = [x[0] for x in a]
-labels = [x[1] for x in a]
+image_files = [x[0] for x in a]
+label_values = [x[1] for x in a]
 
 
+def crop_resize_image(file_path):
+    img = Image.open(file_path)
+
+    diff = abs(img.size[0] - img.size[1])
+    padding = int(diff / 2)
+    if img.size[0] > img.size[1]:
+        new_img = np.pad(img, [(padding, padding + 1), (0, 0)], mode='constant')
+    else:
+        new_img = np.pad(img, [(0, 0), (padding, padding + 1)], mode='constant')
+
+    new_img = imresize(new_img, (200, 200), interp='bilinear')
+
+    return np.asarray(new_img)
+
+images = []
+labels = []
+
+for i, file in enumerate(image_files[:5]):
+    label = np.zeros(2).astype(np.int32)
+    label[label_values[i]] = 1
+    labels.append(label)
+    images.append(crop_resize_image(file))
+
+batch = (np.reshape(np.array(images), (5, -1)), np.array(labels))
 
 LOGDIR = os.path.dirname(__file__)
 SAVEPATH = r'model_saves/'
@@ -110,52 +134,17 @@ def save_model(save_step, sess, saver):
     saver.save(sess, (save_path + '/model.ckpt'), global_step=save_step)
     print('Model saved to %s' % save_path)
 
-def neural_network(input, input_size, num_layers, num_neurons, num_classes, activation_function):
-    input_channel = input_size
-    output_channel = num_neurons
-    prev_layer = input
+def neural_network(input, input_size, num_classes):
+    x = tf.matmul(input, weight_variable([input_size, 32])) + bias_variable([32])
+    x = tf.nn.relu(x)
 
-    if num_layers > 1:
-        for _ in range(num_layers):
-            if activation_function == 'relu':
-                out_layer = tf.nn.relu(tf.add(tf.matmul(
-                    prev_layer, weight_variable([input_channel, output_channel])),
-                    bias_variable([output_channel])))
-            elif activation_function == 'sigmoid':
-                out_layer = tf.nn.sigmoid(tf.add(tf.matmul(
-                    prev_layer, weight_variable([input_channel, output_channel])),
-                    bias_variable([output_channel])))
-            elif activation_function == 'tanh':
-                out_layer = tf.nn.tanh(tf.add(tf.matmul(
-                    prev_layer, weight_variable([input_channel, output_channel])),
-                    bias_variable([output_channel])))
-            else:
-                out_layer = tf.add(tf.matmul(
-                    prev_layer, weight_variable([input_channel, output_channel])),
-                    bias_variable([output_channel]))
+    x = tf.matmul(x, weight_variable([32, 64])) + bias_variable([64])
+    x = tf.nn.relu(x)
 
+    x = tf.matmul(x, weight_variable([64, num_classes])) + bias_variable([num_classes])
+    x = tf.nn.relu(x)
 
-            prev_layer = out_layer
-            input_channel = output_channel
-
-    if activation_function == 'relu':
-        final_layer = tf.nn.relu(tf.add(tf.matmul(
-            prev_layer, weight_variable([input_channel, num_classes])),
-            bias_variable([num_classes])))
-    elif activation_function == 'sigmoid':
-        final_layer = tf.nn.sigmoid(tf.add(tf.matmul(
-            prev_layer, weight_variable([input_channel, num_classes])),
-            bias_variable([num_classes])))
-    elif activation_function == 'tanh':
-        final_layer = tf.nn.tanh(tf.add(tf.matmul(
-            prev_layer, weight_variable([input_channel, num_classes])),
-            bias_variable([num_classes])))
-    else:
-        final_layer = tf.add(tf.matmul(
-            prev_layer, weight_variable([input_channel, num_classes])),
-            bias_variable([num_classes]))
-
-    return final_layer
+    return x
 
 def save_model(hparam, save_step, sess, saver):
     save_path = (SAVEDIR + hparam)
@@ -165,16 +154,11 @@ def save_model(hparam, save_step, sess, saver):
     print('Model saved to %s' % save_path)
 
 def mnist_model(learning_rate,
-                batch_size,
                 num_epochs,
-                display_step,
-                num_neurons,
-                num_layers,
                 input_size,
                 num_classes,
                 hparam,
-                save_step,
-                activation_function):
+                save_step):
 
     # Reset the graph
     tf.reset_default_graph()
@@ -185,7 +169,7 @@ def mnist_model(learning_rate,
     y_ = tf.placeholder(tf.float32, shape=[None, num_classes])
 
     # Output of network
-    y = neural_network(x, input_size, num_layers, num_neurons, num_classes, activation_function)
+    y = neural_network(x, input_size, num_classes)
 
     # Cost function
     with tf.name_scope('cross_entropy'):
@@ -203,30 +187,30 @@ def mnist_model(learning_rate,
         # Get prediction and calculate accuracy
         correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-        tf.summary.scalar('accuracy', accuracy)
+        # tf.summary.scalar('accuracy', accuracy)
 
     # Merge summaries
-    summary = tf.summary.merge_all()
+    # summary = tf.summary.merge_all()
 
     # Setup saver to save variables and graph
-    saver = tf.train.Saver()
+    # saver = tf.train.Saver()
 
     # Initialize all variables
     sess.run(tf.global_variables_initializer())
-    writer = tf.summary.FileWriter(SUMDIR + hparam)
-    writer.add_graph(sess.graph)
+    # writer = tf.summary.FileWriter(SUMDIR + hparam)
+    # writer.add_graph(sess.graph)
 
     # Train
     for step in range(num_epochs):
-        batch = mnist.train.next_batch(batch_size)
+        # batch = mnist.train.next_batch(batch_size)
 
         # Display accuracy
-        if step % display_step == 0:
-            [train_accuracy, sum] = sess.run([accuracy, summary], feed_dict={x: mnist.test.images, y_: mnist.test.labels})
-            print('training accuracy: %s, step: %d'%(train_accuracy, step))
-            writer.add_summary(sum, step)
-        if step % save_step == 0:
-            save_model(hparam, step, sess, saver)
+        # if step % display_step == 0:
+        #     [train_accuracy, sum] = sess.run([accuracy, summary], feed_dict={x: mnist.test.images, y_: mnist.test.labels})
+        #     print('training accuracy: %s, step: %d'%(train_accuracy, step))
+        #     writer.add_summary(sum, step)
+        # if step % save_step == 0:
+            # save_model(hparam, step, sess, saver)
 
         # Training step
         sess.run(train_step, feed_dict={x: batch[0], y_: batch[1]})
@@ -237,7 +221,7 @@ def make_hparam_string(batch_size, learning_rate, num_neurons, num_layers, activ
 
 def main():
     # Parameters
-    num_epochs = 20000
+    num_epochs = 1
     display_step = 50
     save_step = 2500
 
@@ -248,24 +232,19 @@ def main():
     # Parameter search
     batch_size = 5
     neurons = 50
-    layers = 2
-    learning_rate = [0.1, 0.3, 0.5]
+    layers = 1
+    learning_rate = 0.3
     activation_function = 'relu'
 
     hparam = make_hparam_string(batch_size, learning_rate, neurons, layers, activation_function)
     print('Starting run for %s' % hparam)
 
     mnist_model(learning_rate,
-                batch_size,
                 num_epochs,
-                display_step,
-                neurons,
-                layers,
                 input_size,
                 num_classes,
                 hparam,
-                save_step,
-                activation_function)
+                save_step)
 
     print('Done training!')
     print('Run `tensorboard --logdir=%s` to see the results.' % SUMDIR)
