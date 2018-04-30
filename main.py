@@ -11,9 +11,12 @@ class DataSet():
         self.train_dir = self.data_dir + '/train'
         self.val_dir = self.data_dir + '/val'
         self.test_dir = self.data_dir + '/test'
-        self.train_counter = 0
-        self.val_counter = 0
-        self.test_counter = 0
+        self.counters = {'train_normal_counter': 0,
+                         'train_pneumonia_counter': 0,
+                         'val_normal_counter': 0,
+                         'val_pneumonia_counter': 0,
+                         'test_normal_counter': 0,
+                         'test_pneumonia_counter': 0}
         self.shuffle = True
         self.skipped = 0
 
@@ -38,23 +41,28 @@ class DataSet():
                 self.skipped += 1
                 continue
 
-            if 'NORMAL' in file:
+            if 'NORMAL' in dir:
                 images.append((image, 0))
             else:
                 images.append((image, 1))
 
     def prepare_data(self):
-        self.train_images = []
-        self.val_images = []
-        self.test_images = []
+        self.train_normal_images = []
+        self.train_pneumonia_images = []
+
+        self.val_normal_images = []
+        self.val_pneumonia_images = []
+
+        self.test_normal_images = []
+        self.test_pneumonia_images = []
 
         # Load training data
-        self.add_data(self.train_dir + '/NORMAL', self.train_normal_files, self.train_images)
-        self.add_data(self.train_dir + '/PNEUMONIA', self.train_pneumonia_files, self.train_images)
-        self.add_data(self.val_dir + '/NORMAL', self.val_normal_files, self.val_images)
-        self.add_data(self.val_dir + '/PNEUMONIA', self.val_pneumonia_files, self.val_images)
-        self.add_data(self.test_dir + '/NORMAL', self.test_normal_files, self.test_images)
-        self.add_data(self.test_dir + '/PNEUMONIA', self.test_pneumonia_files, self.test_images)
+        self.add_data(self.train_dir + '/NORMAL', self.train_normal_files, self.train_normal_images)
+        self.add_data(self.train_dir + '/PNEUMONIA', self.train_pneumonia_files, self.train_pneumonia_images)
+        self.add_data(self.val_dir + '/NORMAL', self.val_normal_files, self.val_normal_images)
+        self.add_data(self.val_dir + '/PNEUMONIA', self.val_pneumonia_files, self.val_pneumonia_images)
+        self.add_data(self.test_dir + '/NORMAL', self.test_normal_files, self.test_normal_images)
+        self.add_data(self.test_dir + '/PNEUMONIA', self.test_pneumonia_files, self.test_pneumonia_images)
 
         print('Skipped: %d'%self.skipped)
 
@@ -86,61 +94,72 @@ class DataSet():
 
         return np.asarray(new_img)
 
-    def next_batch(self, batch_size, type):
+    def add_images(self, batch_size, counter, data):
         reset_counter = False
         images = []
-        labels = []
+
+        if counter == 'train_n':
+            key = 'train_normal_counter'
+        elif counter == 'train_p':
+            key = 'train_pneumonia_counter'
+        elif counter == 'test_n':
+            key = 'test_normal_counter'
+        elif counter == 'test_p':
+            key = 'test_pneumonia_counter'
+
+        batch_limit = self.counters[key] + batch_size
+
+        if batch_size < 0:
+            self.counters[key] = 0
+            batch_limit = len(data)
+
+        if self.shuffle:
+            random.shuffle(data)
+            self.shuffle = False
+
+        if batch_limit > len(data):
+            batch_limit = len(data)
+            reset_counter = True
+            self.shuffle = True
+
+        while self.counters[key] < batch_limit:
+            label = np.zeros(2).astype(np.int32)
+            label[data[self.counters[key]][1]] = 1
+            images.append((data[self.counters[key]][0], label))
+            self.counters[key] += 1
+
+        if reset_counter:
+            self.counters[key] = 0
+
+        return images
+
+    def next_batch(self, batch_size, type):
+        normal = []
+        pneumonia = []
 
         if type == 'train':
-            batch_limit = self.train_counter + batch_size
-
-            if self.shuffle:
-                random.shuffle(self.train_images)
-                self.shuffle = False
-
-            if batch_limit > len(self.train_images):
-                batch_limit = len(self.train_images)
-                reset_counter = True
-                self.shuffle = True
-
-            while self.train_counter < batch_limit:
-                label = np.zeros(2).astype(np.int32)
-                label[self.train_images[self.train_counter][1]] = 1
-                labels.append(label)
-                images.append(self.train_images[self.train_counter][0])
-                self.train_counter += 1
-
-            if reset_counter:
-                self.train_counter = 0
+            normal = self.add_images(batch_size=(batch_size / 2),
+                                     counter='train_n',
+                                     data=self.train_normal_images)
+            pneumonia = self.add_images(batch_size=(batch_size / 2),
+                                     counter='train_p',
+                                     data=self.train_pneumonia_images)
 
         elif type == 'test':
-            batch_limit = self.test_counter + batch_size
+            normal = self.add_images(batch_size=(batch_size / 2),
+                                     counter='test_n',
+                                     data=self.test_normal_images)
+            pneumonia = self.add_images(batch_size=(batch_size / 2),
+                                     counter='test_p',
+                                     data=self.test_pneumonia_images)
 
-            if batch_size == -1:
-                self.test_counter = 0
-                batch_limit = len(self.test_images)
+        normal.extend(pneumonia)
+        random.shuffle(normal)
 
-            if self.shuffle:
-                random.shuffle(self.test_images)
-                self.shuffle = False
-
-            if batch_limit > len(self.test_images):
-                batch_limit = len(self.test_images)
-                reset_counter = True
-                self.shuffle = True
-
-            while self.test_counter < batch_limit:
-                label = np.zeros(2).astype(np.int32)
-                label[self.test_images[self.test_counter][1]] = 1
-                labels.append(label)
-                images.append(self.test_images[self.test_counter][0])
-                self.test_counter += 1
-
-            if reset_counter:
-                self.test_counter = 0
+        images = [x[0] for x in normal]
+        labels = [x[1] for x in normal]
 
         return (np.reshape(np.array(images), (len(images), -1)), np.array(labels))
-
 
 LOGDIR = os.path.dirname(__file__)
 SAVEPATH = r'model_saves/'
@@ -170,19 +189,15 @@ def save_model(save_step, sess, saver):
     print('Model saved to %s' % save_path)
 
 def neural_network(input, input_size, num_classes):
-    # x = tf.matmul(input, weight_variable([input_size, 256])) + bias_variable([256])
+
+    x = tf.add(tf.matmul(input, weight_variable([input_size, num_classes])), bias_variable([num_classes]))
     # x = tf.nn.relu(x)
     #
-    # x = tf.matmul(x, weight_variable([256, 512])) + bias_variable([512])
+    # x = tf.add(tf.matmul(x, weight_variable([256, 512])), bias_variable([512]))
     # x = tf.nn.relu(x)
     #
-    # x = tf.matmul(x, weight_variable([512, num_classes])) + bias_variable([num_classes])
-    # x = tf.nn.relu(x)
+    # x = tf.add(tf.matmul(x, weight_variable([512, num_classes])), bias_variable([num_classes]))
 
-    # x = tf.matmul(input, weight_variable([input_size, num_classes])) + bias_variable([num_classes])
-    # x = tf.nn.relu(x)
-
-    hidden_layer = tf.add(tf.matmul(x))
     return x
 
 def save_model(hparam, save_step, sess, saver):
@@ -218,7 +233,7 @@ def mnist_model(learning_rate,
 
     with tf.name_scope('Train'):
         # Gradient descent optimizer
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
         # Back propagation step
         train_step = optimizer.minimize(cross_entropy)
 
@@ -235,27 +250,14 @@ def mnist_model(learning_rate,
     saver = tf.train.Saver()
 
     # Initialize all variables
-    # sess.run(tf.global_variables_initializer())
     sess = tf.InteractiveSession()
     sess.run(tf.global_variables_initializer())
-    # tf.global_variables_initializer().run()
     writer = tf.summary.FileWriter(SUMDIR + hparam)
     writer.add_graph(sess.graph)
-
-    # for i in range(5000):
-    #     batch_xs, batch_ys = batch
-    #     sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
-    #
-    #     # Test trained model
-    #     if i % 10 == 0:
-    #         print(sess.run(accuracy, feed_dict={x: batch_xs,
-    #                                             y_: batch_ys}))
-    # Train
 
     dataset = DataSet()
 
     for step in range(num_epochs):
-        # batch = mnist.train.next_batch(batch_size)
         batch_xs, batch_ys = dataset.next_batch(50, 'train')
         sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 
@@ -267,8 +269,6 @@ def mnist_model(learning_rate,
             writer.add_summary(sum, step)
         if step % save_step == 0:
             save_model(hparam, step, sess, saver)
-
-        # Training step
 
 
 def make_hparam_string(batch_size, learning_rate, num_neurons, num_layers, activation_function):
@@ -288,7 +288,7 @@ def main():
     batch_size = 5
     neurons = 50
     layers = 1
-    learning_rate = 0.3
+    learning_rate = 0.01
     activation_function = 'relu'
 
     hparam = make_hparam_string(batch_size, learning_rate, neurons, layers, activation_function)
