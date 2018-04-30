@@ -1,3 +1,9 @@
 
 *.jpeg
 __MACOSX/chest_xray/test/._NORMAL
+model_saves/batch=5_lr_3E-01_neurons=50_layers=1_afunc=relu/checkpoint
+*.data-00000-of-00001
+*.index
+*.meta
+*.DESKTOP-9PLVFVU
+model_saves/batch=5_lr_5E-02_neurons=50_layers=1_afunc=relu/checkpoint
