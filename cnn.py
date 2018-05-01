@@ -5,6 +5,30 @@ from scipy.misc import imresize
 import random
 from PIL import Image
 from time import gmtime, strftime
+import sys
+
+# Print iterations progress
+def print_progress(iteration, total, prefix='', suffix='', decimals=1, bar_length=100):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        bar_length  - Optional  : character length of bar (Int)
+    """
+    str_format = "{0:." + str(decimals) + "f}"
+    percents = str_format.format(100 * (iteration / float(total)))
+    filled_length = int(round(bar_length * iteration / float(total)))
+    bar = '█' * filled_length + '-' * (bar_length - filled_length)
+
+    sys.stdout.write('\r%s |%s| %s%s %s' % (prefix, bar, percents, '%', suffix)),
+
+    if iteration == total:
+        sys.stdout.write('\n')
+    sys.stdout.flush()
 
 class DataSet():
     def __init__(self):
@@ -33,6 +57,10 @@ class DataSet():
         self.prepare_data()
 
     def add_data(self, dir, files, images):
+
+        progress = 0
+        print_progress(progress, len(files), prefix=dir, suffix='Complete', bar_length=50)
+
         for file in files:
             if not '.jpeg' in file:
                 continue
@@ -46,6 +74,11 @@ class DataSet():
                 images.append((image, 0))
             else:
                 images.append((image, 1))
+
+            progress += 1
+            print_progress(progress, len(files), prefix=dir, suffix='Complete', bar_length=50)
+
+
 
     def prepare_data(self):
         self.train_normal_images = []
@@ -90,7 +123,7 @@ class DataSet():
 
             new_img = imresize(new_img, (200, 200), interp='bilinear')
         except:
-            print('Failed to load: File: %s' % file_path)
+            # print('Failed to load: File: %s' % file_path)
             return None
 
         return np.asarray(new_img)
@@ -203,7 +236,10 @@ def save_model(save_step, sess, saver):
     saver.save(sess, (save_path + '/model.ckpt'), global_step=save_step)
     print('Model saved to %s' % save_path)
 
-def cnn(input):
+def cnn(image):
+    # reshape data
+    input = tf.reshape(image, [-1, 200, 200, 1])
+
     # First layer
     W_conv1 = weight_variable([5, 5, 1, 64])
     b_conv1 = bias_variable([64])
@@ -237,10 +273,10 @@ def cnn(input):
 
     return output, keep_prob
 
-def model(learning_rate, num_epochs, input_size, num_classes, hparam, save_step):
+def model(learning_rate, num_epochs, image_size, num_classes, hparam, save_step):
     # Input Layer
-    x = tf.placeholder(tf.float32, shape=[None, 200, 200, 1])
-    y_ = tf.placeholder(tf.float32, shape=[None, 2])
+    x = tf.placeholder(tf.float32, shape=[None, image_size])
+    y_ = tf.placeholder(tf.float32, shape=[None, num_classes])
 
     y, keep_prob = cnn(x)
 
@@ -276,7 +312,7 @@ def model(learning_rate, num_epochs, input_size, num_classes, hparam, save_step)
 
     dataset = DataSet()
 
-    for step in range(1000):
+    for step in range(num_epochs):
         batch_xs, batch_ys = dataset.next_batch(50, 'train')
         sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 1.0})
 
@@ -290,8 +326,8 @@ def model(learning_rate, num_epochs, input_size, num_classes, hparam, save_step)
             save_model(step, sess, saver)
 
 
-def make_hparam_string(learning_rate):
-    return strftime("%Y-%m-%d %H:%M:%S", gmtime())
+def make_hparam_string():
+    return strftime("%Y-%m-%d %H.%M.%S", gmtime())
 
 def main():
     # Parameters
@@ -299,18 +335,18 @@ def main():
     save_step = 1000
 
     # Network Parameters
-    input_size = 40000  # data input (img shape: 200*200)
+    image_size = 200 * 200  # data input (img shape: 200*200)
     num_classes = 2  # classes (NORMAL, PNEUMONIA)
 
     learning_rate = 0.01
 
-    hparam = make_hparam_string(learning_rate)
+    hparam = make_hparam_string()
     print('Starting run for %s' % hparam)
 
 
     model(learning_rate,
             num_epochs,
-            input_size,
+            image_size,
             num_classes,
             hparam,
             save_step)
