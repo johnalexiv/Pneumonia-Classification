@@ -1,0 +1,2 @@
+model_checkpoint_path: "/Users/johnalexiv/GitHub/Pneumonia Classification/cnn/model_saves//model.ckpt-0"
+all_model_checkpoint_paths: "/Users/johnalexiv/GitHub/Pneumonia Classification/cnn/model_saves//model.ckpt-0"

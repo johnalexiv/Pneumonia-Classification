@@ -234,7 +234,8 @@ def save_model(save_step, sess, saver):
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     saver.save(sess, (save_path + '/model.ckpt'), global_step=save_step)
-    print('Model saved to %s' % save_path)
+    sys.stdout.write('Model saved to %s' % save_path)
+    sys.stdout.flush()
 
 def cnn(image):
     # reshape data
@@ -282,7 +283,7 @@ def model(learning_rate, num_epochs, image_size, num_classes, hparam, save_step)
 
     # Cost function
     with tf.name_scope('cross_entropy'):
-        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
             labels=y_, logits=y))
         tf.summary.scalar('cross_entropy', cross_entropy)
 
@@ -313,14 +314,15 @@ def model(learning_rate, num_epochs, image_size, num_classes, hparam, save_step)
     dataset = DataSet()
 
     for step in range(num_epochs):
-        batch_xs, batch_ys = dataset.next_batch(50, 'train')
+        batch_xs, batch_ys = dataset.next_batch(5, 'train')
         sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 1.0})
 
         # Display accuracy
         if step % 10 == 0:
             batch_xs, batch_ys = dataset.next_batch(-1, 'test')
             [train_accuracy, sum] = sess.run([accuracy, summary], feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 0.5})
-            print('training accuracy: %s, step: %d' % (train_accuracy, step))
+            sys.stdout.write('training accuracy: %s, step: %d' % (train_accuracy, step))
+            sys.stdout.flush()
             writer.add_summary(sum, step)
         if step % save_step == 0:
             save_model(step, sess, saver)
