@@ -321,7 +321,7 @@ def model(learning_rate, num_epochs, image_size, num_classes, hparam, save_step)
         if step % 10 == 0:
             batch_xs, batch_ys = dataset.next_batch(-1, 'test')
             [train_accuracy, sum] = sess.run([accuracy, summary], feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 0.5})
-            sys.stdout.write('training accuracy: %s, step: %d' % (train_accuracy, step))
+            sys.stdout.write('training accuracy: %s, step: %d \n' % (train_accuracy, step))
             sys.stdout.flush()
             writer.add_summary(sum, step)
         if step % save_step == 0:
