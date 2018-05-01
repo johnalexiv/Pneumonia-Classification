@@ -4,6 +4,7 @@ import numpy as np
 from scipy.misc import imresize
 import random
 from PIL import Image
+from time import gmtime, strftime
 
 class DataSet():
     def __init__(self):
@@ -64,7 +65,7 @@ class DataSet():
         self.add_data(self.test_dir + '/NORMAL', self.test_normal_files, self.test_normal_images)
         self.add_data(self.test_dir + '/PNEUMONIA', self.test_pneumonia_files, self.test_pneumonia_images)
 
-        print('Skipped: %d'%self.skipped)
+        print('Skipped: %d' % self.skipped)
 
     def crop_resize_image(self, file_path):
         try:
@@ -142,16 +143,16 @@ class DataSet():
                                      counter='train_n',
                                      data=self.train_normal_images)
             pneumonia = self.add_images(batch_size=(batch_size / 2),
-                                     counter='train_p',
-                                     data=self.train_pneumonia_images)
+                                        counter='train_p',
+                                        data=self.train_pneumonia_images)
 
         elif type == 'test':
             normal = self.add_images(batch_size=(batch_size / 2),
                                      counter='test_n',
                                      data=self.test_normal_images)
             pneumonia = self.add_images(batch_size=(batch_size / 2),
-                                     counter='test_p',
-                                     data=self.test_pneumonia_images)
+                                        counter='test_p',
+                                        data=self.test_pneumonia_images)
 
         normal.extend(pneumonia)
         random.shuffle(normal)
@@ -161,9 +162,10 @@ class DataSet():
 
         return (np.reshape(np.array(images), (len(images), -1)), np.array(labels))
 
+
 LOGDIR = os.path.dirname(__file__)
-SAVEPATH = r'model_saves/'
-SUMMARYPATH = r'model_summaries/'
+SAVEPATH = r'cnn/model_saves/'
+SUMMARYPATH = r'cnn/model_summaries/'
 SUMDIR = os.path.join(LOGDIR, SUMMARYPATH)
 SAVEDIR = os.path.join(LOGDIR, SAVEPATH)
 
@@ -173,13 +175,26 @@ if not os.path.exists(SAVEDIR):
 if not os.path.exists(SUMDIR):
     os.mkdir(SUMDIR)
 
+
+def conv2d(x, W):
+  """conv2d returns a 2d convolution layer with full stride."""
+  return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+
+def max_pool_2x2(x):
+  """max_pool_2x2 downsamples a feature map by 2X."""
+  return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
+                        strides=[1, 2, 2, 1], padding='SAME')
+
 def weight_variable(shape):
-    weight = tf.truncated_normal(shape, stddev=0.1)
-    return tf.Variable(weight)
+  """weight_variable generates a weight variable of a given shape."""
+  initial = tf.truncated_normal(shape, stddev=0.1)
+  return tf.Variable(initial)
 
 def bias_variable(shape):
-    bias = tf.constant(0.1, shape=shape)
-    return tf.Variable(bias)
+  """bias_variable generates a bias variable of a given shape."""
+  initial = tf.constant(0.1, shape=shape)
+  return tf.Variable(initial)
+
 
 def save_model(save_step, sess, saver):
     save_path = (SAVEDIR)
@@ -188,42 +203,46 @@ def save_model(save_step, sess, saver):
     saver.save(sess, (save_path + '/model.ckpt'), global_step=save_step)
     print('Model saved to %s' % save_path)
 
-def neural_network(input, input_size, num_classes):
+def cnn(input):
+    # First layer
+    W_conv1 = weight_variable([5, 5, 1, 64])
+    b_conv1 = bias_variable([64])
+    h_conv1 = tf.nn.relu(conv2d(input, W_conv1) + b_conv1)
 
-    x = tf.add(tf.matmul(input, weight_variable([input_size, num_classes])), bias_variable([num_classes]))
-    # x = tf.nn.relu(x)
-    #
-    # x = tf.add(tf.matmul(x, weight_variable([256, 512])), bias_variable([512]))
-    # x = tf.nn.relu(x)
-    #
-    # x = tf.add(tf.matmul(x, weight_variable([512, num_classes])), bias_variable([num_classes]))
+    pool1 = max_pool_2x2(h_conv1)
 
-    return x
+    # Second Layer
+    W_conv2 = weight_variable([5, 5, 64, 128])
+    b_conv2 = bias_variable([128])
+    h_conv2 = tf.nn.relu(conv2d(pool1, W_conv2) + b_conv2)
 
-def save_model(hparam, save_step, sess, saver):
-    save_path = (SAVEDIR + hparam)
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-    saver.save(sess, (save_path + '/model.ckpt'), global_step=save_step)
-    print('Model saved to %s' % save_path)
+    pool2 = max_pool_2x2(h_conv2)
 
-def model(learning_rate,
-                num_epochs,
-                input_size,
-                num_classes,
-                hparam,
-                save_step):
+    # fully connected layer 1
+    W_fc1 = weight_variable([50 * 50 * 128, 512])
+    b_fc1 = bias_variable([512])
 
-    # Reset the graph
-    # tf.reset_default_graph()
-    # sess = tf.Session()
+    h_pool2_flat = tf.reshape(pool2, [-1, 50 * 50 * 128])
+    h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
-    # Setup placeholders, and reshape the data
-    x = tf.placeholder(tf.float32, shape=[None, input_size])
-    y_ = tf.placeholder(tf.float32, shape=[None, num_classes])
+    # Drop out
+    keep_prob = tf.placeholder(tf.float32)
+    h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
-    # Output of network
-    y = neural_network(x, input_size, num_classes)
+    # output layer
+    W_fc2 = weight_variable([512, 2])
+    b_fc2 = bias_variable([2])
+
+    output = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
+
+    return output, keep_prob
+
+def model(learning_rate, num_epochs, input_size, num_classes, hparam, save_step):
+    # Input Layer
+    x = tf.placeholder(tf.float32, shape=[None, 200, 200, 1])
+    y_ = tf.placeholder(tf.float32, shape=[None, 2])
+
+    y, keep_prob = cnn(x)
 
     # Cost function
     with tf.name_scope('cross_entropy'):
@@ -257,53 +276,47 @@ def model(learning_rate,
 
     dataset = DataSet()
 
-    for step in range(num_epochs):
+    for step in range(1000):
         batch_xs, batch_ys = dataset.next_batch(50, 'train')
-        sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
+        sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 1.0})
 
         # Display accuracy
         if step % 10 == 0:
             batch_xs, batch_ys = dataset.next_batch(-1, 'test')
-            [train_accuracy, sum] = sess.run([accuracy, summary], feed_dict={x: batch_xs, y_: batch_ys})
-            print('training accuracy: %s, step: %d'%(train_accuracy, step))
+            [train_accuracy, sum] = sess.run([accuracy, summary], feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 0.5})
+            print('training accuracy: %s, step: %d' % (train_accuracy, step))
             writer.add_summary(sum, step)
         if step % save_step == 0:
-            save_model(hparam, step, sess, saver)
+            save_model(step, sess, saver)
 
 
-def make_hparam_string(batch_size, learning_rate, num_neurons, num_layers, activation_function):
-    return "batch=%d_lr_%.0E_neurons=%s_layers=%s_afunc=%s" % (batch_size, learning_rate, num_neurons, num_layers, activation_function)
-
+def make_hparam_string(learning_rate):
+    return strftime("%Y-%m-%d %H:%M:%S", gmtime())
 
 def main():
     # Parameters
     num_epochs = 10000
-    save_step = 2500
+    save_step = 1000
 
     # Network Parameters
     input_size = 40000  # data input (img shape: 200*200)
     num_classes = 2  # classes (NORMAL, PNEUMONIA)
 
-    # Parameter search
-    batch_size = 5
-    neurons = 50
-    layers = 1
     learning_rate = 0.01
-    activation_function = 'relu'
 
-    hparam = make_hparam_string(batch_size, learning_rate, neurons, layers, activation_function)
+    hparam = make_hparam_string(learning_rate)
     print('Starting run for %s' % hparam)
 
+
     model(learning_rate,
-                num_epochs,
-                input_size,
-                num_classes,
-                hparam,
-                save_step)
+            num_epochs,
+            input_size,
+            num_classes,
+            hparam,
+            save_step)
 
     print('Done training!')
     print('Run `tensorboard --logdir=%s` to see the results.' % SUMDIR)
-
 
 
 if __name__ == '__main__':
