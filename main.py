@@ -5,6 +5,7 @@ from scipy.misc import imresize
 import random
 from PIL import Image
 import sys
+from time import gmtime, strftime
 
 
 # Print iterations progress
@@ -78,6 +79,8 @@ class DataSet():
             progress += 1
             print_progress(progress, len(files), prefix=dir, suffix='Complete', bar_length=50)
 
+
+
     def prepare_data(self):
         self.train_normal_images = []
         self.train_pneumonia_images = []
@@ -88,15 +91,19 @@ class DataSet():
         self.test_normal_images = []
         self.test_pneumonia_images = []
 
-        # Load training data
-        self.add_data(self.train_dir + '/NORMAL', self.train_normal_files, self.train_normal_images)
-        self.add_data(self.train_dir + '/PNEUMONIA', self.train_pneumonia_files, self.train_pneumonia_images)
-        self.add_data(self.val_dir + '/NORMAL', self.val_normal_files, self.val_normal_images)
-        self.add_data(self.val_dir + '/PNEUMONIA', self.val_pneumonia_files, self.val_pneumonia_images)
-        self.add_data(self.test_dir + '/NORMAL', self.test_normal_files, self.test_normal_images)
-        self.add_data(self.test_dir + '/PNEUMONIA', self.test_pneumonia_files, self.test_pneumonia_images)
+        train_balance = min(len(self.train_normal_files), len(self.train_pneumonia_files))
+        val_balance = min(len(self.val_normal_files), len(self.val_pneumonia_files))
+        test_balance = min(len(self.test_normal_files), len(self.test_pneumonia_files))
 
-        print('Skipped: %d'%self.skipped)
+        # Load training data
+        self.add_data(self.train_dir + '/NORMAL', self.train_normal_files[:train_balance], self.train_normal_images)
+        self.add_data(self.train_dir + '/PNEUMONIA', self.train_pneumonia_files[:train_balance], self.train_pneumonia_images)
+        self.add_data(self.val_dir + '/NORMAL', self.val_normal_files[:val_balance], self.val_normal_images)
+        self.add_data(self.val_dir + '/PNEUMONIA', self.val_pneumonia_files[:val_balance], self.val_pneumonia_images)
+        self.add_data(self.test_dir + '/NORMAL', self.test_normal_files[:test_balance], self.test_normal_images)
+        self.add_data(self.test_dir + '/PNEUMONIA', self.test_pneumonia_files[:test_balance], self.test_pneumonia_images)
+
+        print('Skipped: %d' % self.skipped)
 
     def crop_resize_image(self, file_path):
         try:
@@ -119,9 +126,9 @@ class DataSet():
                 else:
                     new_img = np.pad(img, [(0, 0), (padding, padding)], mode='constant')
 
-            new_img = imresize(new_img, (200, 200), interp='bilinear')
+            new_img = imresize(new_img, (256, 256), interp='bilinear')
         except:
-            print('Failed to load: File: %s' % file_path)
+            # print('Failed to load: File: %s' % file_path)
             return None
 
         return np.asarray(new_img)
@@ -138,6 +145,10 @@ class DataSet():
             key = 'test_normal_counter'
         elif counter == 'test_p':
             key = 'test_pneumonia_counter'
+        elif counter =='val_n':
+            key = 'val_normal_counter'
+        elif counter == 'val_p':
+            key = 'val_pneumonia_counter'
 
         batch_limit = self.counters[key] + batch_size
 
@@ -174,16 +185,22 @@ class DataSet():
                                      counter='train_n',
                                      data=self.train_normal_images)
             pneumonia = self.add_images(batch_size=(batch_size / 2),
-                                     counter='train_p',
-                                     data=self.train_pneumonia_images)
-
+                                        counter='train_p',
+                                        data=self.train_pneumonia_images)
         elif type == 'test':
             normal = self.add_images(batch_size=(batch_size / 2),
                                      counter='test_n',
                                      data=self.test_normal_images)
             pneumonia = self.add_images(batch_size=(batch_size / 2),
-                                     counter='test_p',
-                                     data=self.test_pneumonia_images)
+                                        counter='test_p',
+                                        data=self.test_pneumonia_images)
+        elif type == 'val':
+            normal = self.add_images(batch_size=(batch_size / 2),
+                                     counter='test_n',
+                                     data=self.val_normal_images)
+            pneumonia = self.add_images(batch_size=(batch_size / 2),
+                                        counter='test_p',
+                                        data=self.val_pneumonia_images)
 
         normal.extend(pneumonia)
         random.shuffle(normal)
@@ -232,13 +249,6 @@ def neural_network(input, input_size, num_classes):
 
     return x
 
-def save_model(hparam, save_step, sess, saver):
-    save_path = (SAVEDIR + hparam)
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-    saver.save(sess, (save_path + '/model.ckpt'), global_step=save_step)
-    print('Model saved to %s' % save_path)
-
 def model(learning_rate,
                 num_epochs,
                 input_size,
@@ -269,14 +279,14 @@ def model(learning_rate,
         # Back propagation step
         train_step = optimizer.minimize(cross_entropy)
 
+
     with tf.name_scope('accuracy'):
         # Get prediction and calculate accuracy
         correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-        tf.summary.scalar('accuracy', accuracy)
+        train_acc = tf.summary.scalar('train_accuracy', accuracy)
+        test_acc = tf.summary.scalar('test_accuracy', accuracy)
 
-    # Merge summaries
-    summary = tf.summary.merge_all()
 
     # Setup saver to save variables and graph
     saver = tf.train.Saver()
@@ -290,40 +300,42 @@ def model(learning_rate,
     dataset = DataSet()
 
     for step in range(num_epochs):
-        batch_xs, batch_ys = dataset.next_batch(50, 'train')
+        batch_xs, batch_ys = dataset.next_batch(20, 'train')
         sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 
+        if step % 5 == 0:
+            [train_accuracy, sum] = sess.run([accuracy, train_acc], feed_dict={x: batch_xs, y_: batch_ys})
+            sys.stdout.write('training accuracy: %s, step: %d \n' % (train_accuracy, step))
+            sys.stdout.flush()
+            writer.add_summary(sum, step)
+
         # Display accuracy
-        if step % 10 == 0:
-            batch_xs, batch_ys = dataset.next_batch(-1, 'test')
-            [train_accuracy, sum] = sess.run([accuracy, summary], feed_dict={x: batch_xs, y_: batch_ys})
-            print('training accuracy: %s, step: %d'%(train_accuracy, step))
+        if step % 100 == 0:
+            batch_xs, batch_ys = dataset.next_batch(-1, 'val')
+            [test_accuracy, sum] = sess.run([accuracy, test_acc], feed_dict={x: batch_xs, y_: batch_ys})
+            sys.stdout.write('testing accuracy: %s, step: %d \n' % (test_accuracy, step))
+            sys.stdout.flush()
             writer.add_summary(sum, step)
         if step % save_step == 0:
-            save_model(hparam, step, sess, saver)
+            save_model(step, sess, saver)
 
 
-def make_hparam_string(batch_size, learning_rate, num_neurons, num_layers, activation_function):
-    return "batch=%d_lr_%.0E_neurons=%s_layers=%s_afunc=%s" % (batch_size, learning_rate, num_neurons, num_layers, activation_function)
+def make_hparam_string():
+    return strftime("%Y-%m-%d %H.%M.%S", gmtime())
 
 
 def main():
     # Parameters
-    num_epochs = 10000
+    num_epochs = 5000
     save_step = 2500
 
     # Network Parameters
-    input_size = 40000  # data input (img shape: 200*200)
+    input_size = 256 * 256  # data input (img shape: 200*200)
     num_classes = 2  # classes (NORMAL, PNEUMONIA)
 
-    # Parameter search
-    batch_size = 5
-    neurons = 50
-    layers = 1
     learning_rate = 0.01
-    activation_function = 'relu'
 
-    hparam = make_hparam_string(batch_size, learning_rate, neurons, layers, activation_function)
+    hparam = make_hparam_string()
     print('Starting run for %s' % hparam)
 
     model(learning_rate,

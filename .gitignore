@@ -9,3 +9,6 @@ model_saves/batch=5_lr_3E-01_neurons=50_layers=1_afunc=relu/checkpoint
 model_saves/batch=5_lr_5E-02_neurons=50_layers=1_afunc=relu/checkpoint
 model_saves/batch=5_lr_1E-02_neurons=50_layers=1_afunc=relu/checkpoint
 *.edu
+*.tempstate9364545549776372229
+cnn/model_saves/checkpoint
+cnn/model_saves/checkpoint
