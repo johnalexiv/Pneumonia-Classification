@@ -1,4 +1,0 @@
-model_checkpoint_path: "C:/Users/johna/Documents/Pneumonia-Classification\\model_saves//model.ckpt-5000"
-all_model_checkpoint_paths: "C:/Users/johna/Documents/Pneumonia-Classification\\model_saves//model.ckpt-0"
-all_model_checkpoint_paths: "C:/Users/johna/Documents/Pneumonia-Classification\\model_saves//model.ckpt-2500"
-all_model_checkpoint_paths: "C:/Users/johna/Documents/Pneumonia-Classification\\model_saves//model.ckpt-5000"
