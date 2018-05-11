@@ -348,7 +348,7 @@ def model(learning_rate, num_epochs, image_size, num_classes, hparam, save_step)
         correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
         train_acc = tf.summary.scalar('train_accuracy', accuracy)
-        test_acc = tf.summary.scalar('test_accuracy', accuracy)
+        val_acc = tf.summary.scalar('test_accuracy', accuracy)
 
     # Setup saver to save variables and graph
     saver = tf.train.Saver()
@@ -374,12 +374,16 @@ def model(learning_rate, num_epochs, image_size, num_classes, hparam, save_step)
         # Display accuracy
         if step % 100 == 0:
             batch_xs, batch_ys = dataset.next_batch(-1, 'val')
-            [test_accuracy, sum] = sess.run([accuracy, test_acc], feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 1.0})
-            sys.stdout.write('testing accuracy: %s, step: %d \n' % (test_accuracy, step))
+            [val_accuracy, sum] = sess.run([accuracy, val_acc], feed_dict={x: batch_xs, y_: batch_ys})
+            sys.stdout.write('validation accuracy: %s, step: %d \n' % (val_accuracy, step))
             sys.stdout.flush()
             writer.add_summary(sum, step)
         if step % save_step == 0:
             save_model(step, sess, saver)
+
+    batch_xs, batch_ys = dataset.next_batch(-1, 'test')
+    test_accuracy = sess.run(accuracy, feed_dict={x: batch_xs, y_: batch_ys})
+    sys.stdout.write('testing accuracy: %s \n' % test_accuracy)
 
 
 def make_hparam_string():
@@ -391,7 +395,7 @@ def main():
     save_step = 1000
 
     # Network Parameters
-    image_size = 256 * 256  # data input (img shape: 200*200)
+    image_size = 256 * 256  # data input (img shape: 256*256)
     num_classes = 2  # classes (NORMAL, PNEUMONIA)
 
     learning_rate = 0.0001

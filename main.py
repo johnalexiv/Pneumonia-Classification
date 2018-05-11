@@ -239,10 +239,10 @@ def save_model(save_step, sess, saver):
 
 def neural_network(input, input_size, num_classes):
 
-    x = tf.add(tf.matmul(input, weight_variable([input_size, num_classes])), bias_variable([num_classes]))
-    # x = tf.nn.relu(x)
+    x = tf.add(tf.matmul(input, weight_variable([input_size, 256])), bias_variable([256]))
+    x = tf.nn.relu(x)
     #
-    # x = tf.add(tf.matmul(x, weight_variable([256, 512])), bias_variable([512]))
+    x = tf.add(tf.matmul(x, weight_variable([256, num_classes])), bias_variable([num_classes]))
     # x = tf.nn.relu(x)
     #
     # x = tf.add(tf.matmul(x, weight_variable([512, num_classes])), bias_variable([num_classes]))
@@ -285,7 +285,7 @@ def model(learning_rate,
         correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
         train_acc = tf.summary.scalar('train_accuracy', accuracy)
-        test_acc = tf.summary.scalar('test_accuracy', accuracy)
+        val_acc = tf.summary.scalar('val_accuracy', accuracy)
 
 
     # Setup saver to save variables and graph
@@ -312,12 +312,16 @@ def model(learning_rate,
         # Display accuracy
         if step % 100 == 0:
             batch_xs, batch_ys = dataset.next_batch(-1, 'val')
-            [test_accuracy, sum] = sess.run([accuracy, test_acc], feed_dict={x: batch_xs, y_: batch_ys})
-            sys.stdout.write('testing accuracy: %s, step: %d \n' % (test_accuracy, step))
+            [val_accuracy, sum] = sess.run([accuracy, val_acc], feed_dict={x: batch_xs, y_: batch_ys})
+            sys.stdout.write('validation accuracy: %s, step: %d \n' % (val_accuracy, step))
             sys.stdout.flush()
             writer.add_summary(sum, step)
         if step % save_step == 0:
             save_model(step, sess, saver)
+
+    batch_xs, batch_ys = dataset.next_batch(-1, 'test')
+    test_accuracy = sess.run(accuracy, feed_dict={x: batch_xs, y_: batch_ys})
+    sys.stdout.write('testing accuracy: %s \n'%test_accuracy)
 
 
 def make_hparam_string():
@@ -330,7 +334,7 @@ def main():
     save_step = 2500
 
     # Network Parameters
-    input_size = 256 * 256  # data input (img shape: 200*200)
+    input_size = 256 * 256  # data input (img shape: 256*256)
     num_classes = 2  # classes (NORMAL, PNEUMONIA)
 
     learning_rate = 0.01
