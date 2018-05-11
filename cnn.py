@@ -374,7 +374,7 @@ def model(learning_rate, num_epochs, image_size, num_classes, hparam, save_step)
         # Display accuracy
         if step % 100 == 0:
             batch_xs, batch_ys = dataset.next_batch(-1, 'val')
-            [val_accuracy, sum] = sess.run([accuracy, val_acc], feed_dict={x: batch_xs, y_: batch_ys})
+            [val_accuracy, sum] = sess.run([accuracy, val_acc], feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 1.0})
             sys.stdout.write('validation accuracy: %s, step: %d \n' % (val_accuracy, step))
             sys.stdout.flush()
             writer.add_summary(sum, step)
@@ -382,7 +382,7 @@ def model(learning_rate, num_epochs, image_size, num_classes, hparam, save_step)
             save_model(step, sess, saver)
 
     batch_xs, batch_ys = dataset.next_batch(-1, 'test')
-    test_accuracy = sess.run(accuracy, feed_dict={x: batch_xs, y_: batch_ys})
+    test_accuracy = sess.run(accuracy, feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 1.0})
     sys.stdout.write('testing accuracy: %s \n' % test_accuracy)
 
 
